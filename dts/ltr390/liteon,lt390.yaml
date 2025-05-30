@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: Liteon electronics LTR390 optical sensor over I2C
+
+compatible: "liteon,ltr390"
+
+include: [sensor-device.yaml, i2c-device.yaml]
+
+properties:
+
+  irq-gpio:
+    type: phandle-array
+    required: false
+    description: Data/Command control GPIO
