@@ -1,6 +1,9 @@
 #ifndef LTR390_DISPLAY_DRIVER_H__
 #define LTR390_DISPLAY_DRIVER_H__
 
+#include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 
 #define LTR390_MAIN_CTRL	    (0x00) // Main control register
@@ -36,6 +39,8 @@
 #define GAIN_6			    (0x2)
 #define GAIN_9			    (0x3)
 #define GAIN_18			    (0x4)
+
+#define LTR390_ID		    (0xb2)
 
 struct ltr390_config {
 	struct i2c_dt_spec i2c;

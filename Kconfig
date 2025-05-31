@@ -6,6 +6,6 @@ menuconfig LTR390
 	bool "LTR390 optical sensor"
 	default y
 	depends on DT_HAS_LITEON_LTR390_ENABLED
-	select SPI
+	select I2C
 	help
 	  Enable driver for LTR390 sensor.

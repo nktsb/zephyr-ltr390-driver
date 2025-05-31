@@ -6,9 +6,3 @@ compatible: "liteon,ltr390"
 
 include: [sensor-device.yaml, i2c-device.yaml]
 
-properties:
-
-  irq-gpio:
-    type: phandle-array
-    required: false
-    description: Data/Command control GPIO
