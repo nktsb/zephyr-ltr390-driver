@@ -12,7 +12,7 @@
 
 #define LTR390_UV_SENSITIVITY 2300 
 #define WFAC 1.0f
-#define MAX_CONVERISON_TIME 400
+#define MAX_CONVERISON_TIME 1000
 
 LOG_MODULE_REGISTER(ltr390, CONFIG_SENSOR_LOG_LEVEL);
 
@@ -115,10 +115,10 @@ static int ltr390_is_data_ready(const struct device *dev)
 
 	if (status_reg_val & (1 << 3))
 	{
-		return 0;
+		return 1; // data ready
 	}
 
-	return 1;
+	return 0; // data not ready
 }
 
 static int ltr390_set_gain(const struct device *dev, ltr390_gain_t gain)
@@ -157,7 +157,8 @@ static int ltr390_set_rate(const struct device *dev, ltr390_rate_t rate)
 		return ret;
 	}
 
-	meas_rate = (meas_rate & 0x8F) | rate;
+	meas_rate &= meas_rate & 0xF8;
+	meas_rate |= rate;
 
 	ret = ltr390_write_byte(dev, LTR390_MEAS_RATE, meas_rate);
 	if (ret < 0)
@@ -185,7 +186,8 @@ static int ltr390_set_resolution(const struct device *dev,
 		return ret;
 	}
 
-	meas_rate = (meas_rate & 0x8F) | resolution << 4;
+	meas_rate &= 0x8F;
+	meas_rate |= resolution << 4;
 
 	ret = ltr390_write_byte(dev, LTR390_MEAS_RATE, meas_rate);
 	if (ret < 0)
@@ -214,6 +216,7 @@ static int ltr390_set_mode(const struct device *dev,
 		return ret;
 	}
 
+	ctl_reg_val &= ~(1 << 3);
 	ctl_reg_val |= (mode << 3);
 
 	ret = ltr390_write_byte(dev, LTR390_MAIN_CTRL, ctl_reg_val);
@@ -295,6 +298,8 @@ static int ltr390_init(const struct device *dev)
 	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
 	ltr390_sample_fetch(dev, SENSOR_CHAN_LTR390_UVI);
 	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
+	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
+	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
 
 	return 0;
 }
@@ -321,12 +326,12 @@ static inline void ltr390_get_uvi_from_raw(const struct device *dev)
 	const struct ltr390_config *config = dev->config;
 	struct ltr390_data *data = dev->data;
 
-	data->uvi = (float)(data->raw_uvi_data) / 
+	data->uvi = (float)(data->raw_uvi_data) * (float)(WFAC) / 
 			((gain_factor[config->gain] / 
 			gain_factor[LTR390_GAIN_18]) * 
 			(res_factor[config->resolution] / 
 			res_factor[RESOLUTION_20BIT_TIME400MS]) * 
-			(float)(LTR390_UV_SENSITIVITY)) * (float)(WFAC);
+			(float)(LTR390_UV_SENSITIVITY));
 } 
 
 static inline void ltr390_get_lux_from_raw(const struct device *dev)
@@ -334,23 +339,34 @@ static inline void ltr390_get_lux_from_raw(const struct device *dev)
 	const struct ltr390_config *config = dev->config;
 	struct ltr390_data *data = dev->data;
 
-	data->lux = 0.6 * (float)(data->raw_lux_data) / 
+	data->lux = 0.6f * (float)(data->raw_lux_data) * (float)(WFAC)/ 
 			(gain_factor[config->gain] * 
-			res_factor[config->resolution]) * (float)(WFAC);
+			res_factor[config->resolution]);
 } 
 
 static int ltr390_sample_fetch(const struct device *dev,
 				 enum sensor_channel chan)
 {
 	struct ltr390_data *data = dev->data;
+	int ret;
 
 	switch (chan)
 	{
 		case SENSOR_CHAN_LIGHT:
 			ltr390_set_mode(dev, LTR390_MODE_ALS);
+			if (ret < 0)
+			{
+				LOG_ERR("Error setting ALS mode: %d", ret);
+				return ret;
+			}
 			break;
 		case SENSOR_CHAN_LTR390_UVI:
-			ltr390_set_mode(dev, LTR390_MODE_UVS);
+			ret = ltr390_set_mode(dev, LTR390_MODE_UVS);
+			if (ret < 0)
+			{
+				LOG_ERR("Error setting UVS mode: %d", ret);
+				return ret;
+			}
 			break;
 		default:
 			return -ENOTSUP;
@@ -361,8 +377,6 @@ static int ltr390_sample_fetch(const struct device *dev,
 
 	int64_t start_time = k_uptime_get();
 
-	int ret;
-
 	while (1)
 	{
 		if (k_uptime_get() - start_time > MAX_CONVERISON_TIME)
@@ -372,7 +386,7 @@ static int ltr390_sample_fetch(const struct device *dev,
 		}
 
 		ret = ltr390_is_data_ready(dev);
-		if (ret == 0)
+		if (ret == 1)
 		{
 			break;
 		}
