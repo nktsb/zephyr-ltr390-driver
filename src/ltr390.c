@@ -78,6 +78,7 @@ static int ltr390_check_id(const struct device *dev)
 
 static int ltr390_enable(const struct device *dev)
 {
+	struct ltr390_data *data = dev->data;
 	uint8_t ctl_reg_val = 0;
 	int ret;
 
@@ -94,11 +95,12 @@ static int ltr390_enable(const struct device *dev)
 	{
 		return ret;
 	}
+	data->enabled = true;
 
 	return 0;
 }
 
-static int ltr390_set_gain(const struct device *dev, enum ltr390_gain gain)
+static int ltr390_set_gain(const struct device *dev, ltr390_gain_t gain)
 {
 	int ret;
 
@@ -118,11 +120,11 @@ static int ltr390_set_gain(const struct device *dev, enum ltr390_gain gain)
 }
 
 
-static int ltr390_set_rate(const struct device *dev, enum ltr390_rate rate)
+static int ltr390_set_rate(const struct device *dev, ltr390_rate_t rate)
 {
 	int ret;
 
-	if (ret > RATE_2000MS)
+	if (rate > RATE_2000MS)
 	{
 		return -EINVAL;
 	}
@@ -146,7 +148,7 @@ static int ltr390_set_rate(const struct device *dev, enum ltr390_rate rate)
 }
 
 static int ltr390_set_resolution(const struct device *dev, 
-		enum ltr390_resolution resolution)
+		ltr390_resolution_t resolution)
 {
 	int ret;
 
@@ -198,21 +200,21 @@ static int ltr390_init(const struct device *dev)
 		return ret;
 	}
 
-	ret = ltr390_set_gain(dev, GAIN_3);
+	ret = ltr390_set_gain(dev, config->gain);
 	if (ret < 0)
 	{
 		LOG_ERR("Set gain failed: %d", ret);
 		return ret;
 	}
 
-	ret = ltr390_set_rate(dev, RATE_100MS);
+	ret = ltr390_set_rate(dev, config->data_rate);
 	if (ret < 0)
 	{
 		LOG_ERR("Set rate failed: %d", ret);
 		return ret;
 	}
 
-	ret = ltr390_set_resolution(dev, RESOLUTION_18BIT_TIME100MS);
+	ret = ltr390_set_resolution(dev, config->resolution);
 	if (ret < 0)
 	{
 		LOG_ERR("Set resolution failed: %d", ret);
@@ -235,7 +237,6 @@ static int ltr390_channel_get(const struct device *dev,
 	return 0;
 }
 
-
 static const struct sensor_driver_api ltr390_driver_api = {
 	.sample_fetch = ltr390_sample_fetch,
 	.channel_get = ltr390_channel_get,
@@ -247,6 +248,9 @@ static const struct sensor_driver_api ltr390_driver_api = {
 												\
 	static const struct ltr390_config ltr390_config_##inst = {				\
 		.i2c = I2C_DT_SPEC_INST_GET(inst),						\
+		.gain = DT_INST_ENUM_IDX(inst, gain),						\
+		.resolution = RESOLUTION_ENUM_SIZE - DT_INST_ENUM_IDX(inst, resolution) - 1,	\
+		.data_rate = DT_INST_ENUM_IDX(inst, data_rate),					\
 	};											\
 												\
 	SENSOR_DEVICE_DT_INST_DEFINE(inst, ltr390_init, PM_DEVICE_DT_INST_GET(inst),		\
