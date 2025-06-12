@@ -78,30 +78,6 @@ static int ltr390_check_id(const struct device *dev)
 	return 0;
 }
 
-static int ltr390_disable_meas(const struct device *dev)
-{
-	struct ltr390_data *data = dev->data;
-	uint8_t ctl_reg_val = 0;
-	int ret;
-
-	ret = ltr390_read_byte(dev, LTR390_MAIN_CTRL, &ctl_reg_val);
-	if (ret < 0)
-	{
-		return ret;
-	}
-
-	ctl_reg_val &= ~(1 << 1);
-
-	ret = ltr390_write_byte(dev, LTR390_MAIN_CTRL, ctl_reg_val);
-	if (ret < 0)
-	{
-		return ret;
-	}
-	data->enabled = true;
-
-	return 0;
-}
-
 static int ltr390_enable_meas(const struct device *dev)
 {
 	struct ltr390_data *data = dev->data;
@@ -294,6 +270,13 @@ static int ltr390_init(const struct device *dev)
 		return ret;
 	}
 
+	ret = ltr390_set_mode(dev, config->mode);
+	if (ret < 0)
+	{
+		LOG_ERR("Set mode failed: %d", ret);
+		return ret;
+	}
+
 	ret = ltr390_set_gain(dev, config->gain);
 	if (ret < 0)
 	{
@@ -312,6 +295,13 @@ static int ltr390_init(const struct device *dev)
 	if (ret < 0)
 	{
 		LOG_ERR("Set resolution failed: %d", ret);
+		return ret;
+	}
+
+	ret = ltr390_enable_meas(dev);
+	if (ret < 0)
+	{
+		LOG_ERR("Enable measurement failed: %d", ret);
 		return ret;
 	}
 
@@ -361,64 +351,33 @@ static inline void ltr390_get_lux_from_raw(const struct device *dev)
 static int ltr390_sample_fetch(const struct device *dev,
 				 enum sensor_channel chan)
 {
+	const struct ltr390_config *config = dev->config;
 	struct ltr390_data *data = dev->data;
 	int ret;
 
-	switch (chan)
+	if (!((chan == SENSOR_CHAN_LIGHT && config->mode == LTR390_MODE_ALS) ||
+	    (chan == SENSOR_CHAN_LTR390_UVI && config->mode == LTR390_MODE_UVS) ||
+	    chan == SENSOR_CHAN_ALL))
 	{
-		case SENSOR_CHAN_LIGHT:
-			ret = ltr390_set_mode(dev, LTR390_MODE_ALS);
-			if (ret < 0)
-			{
-				LOG_ERR("Error setting ALS mode: %d", ret);
-				return ret;
-			}
-			break;
-		case SENSOR_CHAN_LTR390_UVI:
-			ret = ltr390_set_mode(dev, LTR390_MODE_UVS);
-			if (ret < 0)
-			{
-				LOG_ERR("Error setting UVS mode: %d", ret);
-				return ret;
-			}
-			break;
-		default:
-			return -ENOTSUP;
+		LOG_ERR("Failed fetch data: wrong channel!");
+		return -ENOTSUP;
 	}
 
-	ltr390_enable_meas(dev);
-
-	int64_t start_time = k_uptime_get();
-
-	while (1)
+	ret = ltr390_is_data_ready(dev);
+	if (ret < 0)
 	{
-		if (k_uptime_get() - start_time > MAX_CONVERISON_TIME)
-		{
-			LOG_ERR("Waiting data ready timed out!");
-			ltr390_disable_meas(dev);
-
-			return -ETIMEDOUT;
-		}
-
-		ret = ltr390_is_data_ready(dev);
-		if (ret == 1)
-		{
-			break;
-		}
-		if (ret < 0)
-		{
-			LOG_ERR("Error waiting data ready: %d", ret);
-			return ret;
-		}
-
-		k_msleep(5);
+		LOG_ERR("Error waiting data ready: %d", ret);
+		return ret;
+	}
+	if (ret == 0)
+	{
+		LOG_WRN("Data is not ready!");
+		return -EBUSY;
 	}
 
-	ltr390_disable_meas(dev);
-
-	switch (chan)
+	switch (config->mode)
 	{
-		case SENSOR_CHAN_LTR390_UVI:
+		case LTR390_MODE_UVS:
 			ret = ltr390_get_raw_uvs_data(dev, &data->raw_uvi_data);
 			if (ret < 0)
 			{
@@ -427,7 +386,7 @@ static int ltr390_sample_fetch(const struct device *dev,
 			}
 			ltr390_get_uvi_from_raw(dev);
 			break;
-		case SENSOR_CHAN_LIGHT:
+		case LTR390_MODE_ALS:
 			ret = ltr390_get_raw_als_data(dev, &data->raw_lux_data);
 			if (ret < 0)
 			{
@@ -479,6 +438,7 @@ static const struct sensor_driver_api ltr390_driver_api = {
 		.gain = DT_INST_ENUM_IDX(inst, gain),						\
 		.resolution = LTR390_RES_ENUM_SIZE - DT_INST_ENUM_IDX(inst, resolution) - 1,	\
 		.data_rate = DT_INST_ENUM_IDX(inst, data_rate),					\
+		.mode = DT_INST_ENUM_IDX(inst, mode),						\
 	};											\
 												\
 	SENSOR_DEVICE_DT_INST_DEFINE(inst, ltr390_init, PM_DEVICE_DT_INST_GET(inst),		\

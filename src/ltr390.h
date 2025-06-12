@@ -6,6 +6,8 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 
+#define SENSOR_CHAN_LTR390_UVI SENSOR_CHAN_PRIV_START
+
 #define LTR390_MAIN_CTRL	    (0x00) // Main control register
 #define LTR390_MEAS_RATE	    (0x04) // Resolution and data rate
 #define LTR390_GAIN		    (0x05) // ALS and UVS gain range
@@ -57,15 +59,12 @@ typedef enum ltr390_resolution {
 	LTR390_RES_ENUM_SIZE,
 } ltr390_resolution_t;
 
-enum sensor_channel_ltr390 {
-        SENSOR_CHAN_LTR390_UVI = SENSOR_CHAN_PRIV_START,
-};
-
 struct ltr390_config {
 	struct i2c_dt_spec i2c;
 	ltr390_gain_t gain;
 	ltr390_resolution_t resolution;
 	ltr390_rate_t data_rate;
+	ltr390_mode_t mode;
 };
 
 struct ltr390_data {

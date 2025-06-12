@@ -42,3 +42,10 @@ properties:
       - 18
       - 19
       - 20
+  
+  mode:
+    type: string
+    default: "ambient-light"
+    enum:
+      - "ambient-light"
+      - "uv-index"
