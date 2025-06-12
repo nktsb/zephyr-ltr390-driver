@@ -328,12 +328,12 @@ static int ltr390_init(const struct device *dev)
 	return 0;
 }
 
-static const uint8_t gain_factor[] ={
-	[LTR390_GAIN_1] = 1,
-	[LTR390_GAIN_3] = 3,
-	[LTR390_GAIN_6] = 6,
-	[LTR390_GAIN_9] = 9,
-	[LTR390_GAIN_18] = 18,
+static const float gain_factor[] ={
+	[LTR390_GAIN_1] = 1.0f,
+	[LTR390_GAIN_3] = 3.0f,
+	[LTR390_GAIN_6] = 6.0f,
+	[LTR390_GAIN_9] = 9.0f,
+	[LTR390_GAIN_18] = 18.0f,
 };
 
 static const float res_factor[] ={
