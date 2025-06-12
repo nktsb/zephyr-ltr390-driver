@@ -78,6 +78,30 @@ static int ltr390_check_id(const struct device *dev)
 	return 0;
 }
 
+static int ltr390_disable_meas(const struct device *dev)
+{
+	struct ltr390_data *data = dev->data;
+	uint8_t ctl_reg_val = 0;
+	int ret;
+
+	ret = ltr390_read_byte(dev, LTR390_MAIN_CTRL, &ctl_reg_val);
+	if (ret < 0)
+	{
+		return ret;
+	}
+
+	ctl_reg_val &= ~(1 << 1);
+
+	ret = ltr390_write_byte(dev, LTR390_MAIN_CTRL, ctl_reg_val);
+	if (ret < 0)
+	{
+		return ret;
+	}
+	data->enabled = true;
+
+	return 0;
+}
+
 static int ltr390_enable_meas(const struct device *dev)
 {
 	struct ltr390_data *data = dev->data;
@@ -145,7 +169,7 @@ static int ltr390_set_rate(const struct device *dev, ltr390_rate_t rate)
 {
 	int ret;
 
-	if (rate > RATE_2000MS)
+	if (rate > LTR390_RATE_2000MS)
 	{
 		return -EINVAL;
 	}
@@ -174,7 +198,7 @@ static int ltr390_set_resolution(const struct device *dev,
 {
 	int ret;
 
-	if (resolution > RESOLUTION_13BIT_TIME12_5MS)
+	if (resolution > LTR390_RES_13BIT_TIME12_5MS)
 	{
 		return -EINVAL;
 	}
@@ -313,12 +337,12 @@ static const uint8_t gain_factor[] ={
 };
 
 static const float res_factor[] ={
-	[RESOLUTION_20BIT_TIME400MS] = 4.0,
-	[RESOLUTION_19BIT_TIME200MS] = 2.0,
-	[RESOLUTION_18BIT_TIME100MS] = 1.0,
-	[RESOLUTION_17BIT_TIME50MS] = 0.5,
-	[RESOLUTION_16BIT_TIME25MS] = 0.25,
-	[RESOLUTION_13BIT_TIME12_5MS] = 0.03125,
+	[LTR390_RES_20BIT_TIME400MS] = 4.0,
+	[LTR390_RES_19BIT_TIME200MS] = 2.0,
+	[LTR390_RES_18BIT_TIME100MS] = 1.0,
+	[LTR390_RES_17BIT_TIME50MS] = 0.5,
+	[LTR390_RES_16BIT_TIME25MS] = 0.25,
+	[LTR390_RES_13BIT_TIME12_5MS] = 0.03125,
 };
 
 static inline void ltr390_get_uvi_from_raw(const struct device *dev)
@@ -330,7 +354,7 @@ static inline void ltr390_get_uvi_from_raw(const struct device *dev)
 			((gain_factor[config->gain] / 
 			gain_factor[LTR390_GAIN_18]) * 
 			(res_factor[config->resolution] / 
-			res_factor[RESOLUTION_20BIT_TIME400MS]) * 
+			res_factor[LTR390_RES_20BIT_TIME400MS]) * 
 			(float)(LTR390_UV_SENSITIVITY));
 } 
 
@@ -353,7 +377,7 @@ static int ltr390_sample_fetch(const struct device *dev,
 	switch (chan)
 	{
 		case SENSOR_CHAN_LIGHT:
-			ltr390_set_mode(dev, LTR390_MODE_ALS);
+			ret = ltr390_set_mode(dev, LTR390_MODE_ALS);
 			if (ret < 0)
 			{
 				LOG_ERR("Error setting ALS mode: %d", ret);
@@ -382,6 +406,8 @@ static int ltr390_sample_fetch(const struct device *dev,
 		if (k_uptime_get() - start_time > MAX_CONVERISON_TIME)
 		{
 			LOG_ERR("Waiting data ready timed out!");
+			ltr390_disable_meas(dev);
+
 			return -ETIMEDOUT;
 		}
 
@@ -398,6 +424,8 @@ static int ltr390_sample_fetch(const struct device *dev,
 
 		k_msleep(5);
 	}
+
+	ltr390_disable_meas(dev);
 
 	switch (chan)
 	{
@@ -445,7 +473,7 @@ static const struct sensor_driver_api ltr390_driver_api = {
 	static const struct ltr390_config ltr390_config_##inst = {				\
 		.i2c = I2C_DT_SPEC_INST_GET(inst),						\
 		.gain = DT_INST_ENUM_IDX(inst, gain),						\
-		.resolution = RESOLUTION_ENUM_SIZE - DT_INST_ENUM_IDX(inst, resolution) - 1,	\
+		.resolution = LTR390_RES_ENUM_SIZE - DT_INST_ENUM_IDX(inst, resolution) - 1,	\
 		.data_rate = DT_INST_ENUM_IDX(inst, data_rate),					\
 	};											\
 												\
