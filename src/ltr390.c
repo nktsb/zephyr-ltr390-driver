@@ -276,9 +276,6 @@ static int32_t ltr390_get_raw_als_data(const struct device *dev, uint32_t *buff)
 	return 0;
 }
 
-static int ltr390_sample_fetch(const struct device *dev,
-				 enum sensor_channel chan);
-
 static int ltr390_init(const struct device *dev)
 {
 	const struct ltr390_config *config = dev->config;
@@ -317,13 +314,6 @@ static int ltr390_init(const struct device *dev)
 		LOG_ERR("Set resolution failed: %d", ret);
 		return ret;
 	}
-
-	ltr390_sample_fetch(dev, SENSOR_CHAN_LTR390_UVI);
-	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
-	ltr390_sample_fetch(dev, SENSOR_CHAN_LTR390_UVI);
-	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
-	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
-	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
 
 	return 0;
 }
@@ -398,7 +388,6 @@ static int ltr390_sample_fetch(const struct device *dev,
 
 	ltr390_enable_meas(dev);
 
-
 	int64_t start_time = k_uptime_get();
 
 	while (1)
@@ -458,6 +447,21 @@ static int ltr390_channel_get(const struct device *dev,
 				enum sensor_channel chan,
 				struct sensor_value *val)
 {
+	struct ltr390_data *data = dev->data;
+
+	switch (chan) {
+		case SENSOR_CHAN_LIGHT:
+			val->val1 = (int32_t)data->lux;
+			val->val2 = (int32_t)((data->lux - val->val1) * 1000000);
+			break;
+			
+		case SENSOR_CHAN_LTR390_UVI:
+			val->val1 = (int32_t)data->uvi;
+			val->val2 = (int32_t)((data->uvi - val->val1) * 1000000);
+			break;
+		default:
+			return -ENOTSUP;
+	}
 	return 0;
 }
 
