@@ -29,11 +29,11 @@ typedef enum ltr390_mode
 } ltr390_mode_t;
 
 typedef enum ltr390_gain {
-	GAIN_1,
-	GAIN_3,
-	GAIN_6,
-	GAIN_9,
-	GAIN_18,
+	LTR390_GAIN_1,
+	LTR390_GAIN_3,
+	LTR390_GAIN_6,
+	LTR390_GAIN_9,
+	LTR390_GAIN_18,
 } ltr390_gain_t;
 
 typedef enum ltr390_rate {
@@ -69,8 +69,10 @@ struct ltr390_config {
 };
 
 struct ltr390_data {
-	uint8_t uvi;
-	uint32_t lux;
+	uint32_t raw_lux_data;
+	uint32_t raw_uvi_data;
+	float uvi;
+	float lux;
 
 	bool enabled;
 };

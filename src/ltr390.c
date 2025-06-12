@@ -10,16 +10,18 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/kernel.h>
 
-#define UV_COUNT       160
-#define UV_SENSITIVITY 2300 
+#define LTR390_UV_SENSITIVITY 2300 
+#define WFAC 1.0f
+#define MAX_CONVERISON_TIME 400
 
 LOG_MODULE_REGISTER(ltr390, CONFIG_SENSOR_LOG_LEVEL);
 
-static int ltr390_write_byte(const struct device *dev, uint8_t reg, uint8_t data)
+static int ltr390_write_byte(const struct device *dev, uint8_t reg, uint8_t byte)
 {
 	const struct ltr390_config *config = dev->config;
 
-	int ret = i2c_write_dt(&config->i2c, &data, sizeof(data));
+	uint8_t buff[] = {reg, byte};
+	int ret = i2c_write_dt(&config->i2c, buff, sizeof(buff));
 	if (ret < 0) {
 		LOG_ERR("write[%02X]: %u", reg, ret);
 		return ret;
@@ -76,7 +78,7 @@ static int ltr390_check_id(const struct device *dev)
 	return 0;
 }
 
-static int ltr390_enable(const struct device *dev)
+static int ltr390_enable_meas(const struct device *dev)
 {
 	struct ltr390_data *data = dev->data;
 	uint8_t ctl_reg_val = 0;
@@ -88,7 +90,7 @@ static int ltr390_enable(const struct device *dev)
 		return ret;
 	}
 
-	ctl_reg_val |= (1 << 1); // enable bit
+	ctl_reg_val |= (1 << 1);
 
 	ret = ltr390_write_byte(dev, LTR390_MAIN_CTRL, ctl_reg_val);
 	if (ret < 0)
@@ -100,11 +102,30 @@ static int ltr390_enable(const struct device *dev)
 	return 0;
 }
 
+static int ltr390_is_data_ready(const struct device *dev)
+{
+	uint8_t status_reg_val = 0;
+	int ret;
+
+	ret = ltr390_read_byte(dev, LTR390_MAIN_STATUS, &status_reg_val);
+	if (ret < 0)
+	{
+		return ret;
+	}
+
+	if (status_reg_val & (1 << 3))
+	{
+		return 0;
+	}
+
+	return 1;
+}
+
 static int ltr390_set_gain(const struct device *dev, ltr390_gain_t gain)
 {
 	int ret;
 
-	if (gain > GAIN_18)
+	if (gain > LTR390_GAIN_18)
 	{
 		LOG_ERR("Wrong gain: %d", gain);
 		return -EINVAL;
@@ -175,6 +196,62 @@ static int ltr390_set_resolution(const struct device *dev,
 	return 0;
 }
 
+static int ltr390_set_mode(const struct device *dev, 
+		ltr390_mode_t mode)
+{
+	int ret;
+
+	if (mode > LTR390_MODE_UVS)
+	{
+		return -EINVAL;
+	}
+
+	uint8_t ctl_reg_val = 0;
+
+	ret = ltr390_read_byte(dev, LTR390_MAIN_CTRL, &ctl_reg_val);
+	if (ret < 0)
+	{
+		return ret;
+	}
+
+	ctl_reg_val |= (mode << 3);
+
+	ret = ltr390_write_byte(dev, LTR390_MAIN_CTRL, ctl_reg_val);
+	if (ret < 0)
+	{
+		return ret;
+	}
+
+	return 0;
+}
+
+static int32_t ltr390_get_raw_uvs_data(const struct device *dev, uint32_t *buff)
+{
+	int ret;
+
+	ret = ltr390_read_data(dev, LTR390_UVSDATA, (uint8_t *)buff, 3);
+	if (ret < 0)
+	{
+		return ret;
+	}
+	return 0;
+}
+
+static int32_t ltr390_get_raw_als_data(const struct device *dev, uint32_t *buff)
+{
+	int ret;
+
+	ret = ltr390_read_data(dev, LTR390_ALSDATA, (uint8_t *)buff, 3);
+	if (ret < 0)
+	{
+		return ret;
+	}
+	return 0;
+}
+
+static int ltr390_sample_fetch(const struct device *dev,
+				 enum sensor_channel chan);
+
 static int ltr390_init(const struct device *dev)
 {
 	const struct ltr390_config *config = dev->config;
@@ -190,13 +267,6 @@ static int ltr390_init(const struct device *dev)
 	if (ret < 0)
 	{
 		LOG_ERR("Check ID failed: %d", ret);
-		return ret;
-	}
-
-	ret = ltr390_enable(dev);
-	if (ret < 0)
-	{
-		LOG_ERR("Enable failed: %d", ret);
 		return ret;
 	}
 
@@ -221,12 +291,124 @@ static int ltr390_init(const struct device *dev)
 		return ret;
 	}
 
+	ltr390_sample_fetch(dev, SENSOR_CHAN_LTR390_UVI);
+	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
+	ltr390_sample_fetch(dev, SENSOR_CHAN_LTR390_UVI);
+	ltr390_sample_fetch(dev, SENSOR_CHAN_LIGHT);
+
 	return 0;
 }
+
+static const uint8_t gain_factor[] ={
+	[LTR390_GAIN_1] = 1,
+	[LTR390_GAIN_3] = 3,
+	[LTR390_GAIN_6] = 6,
+	[LTR390_GAIN_9] = 9,
+	[LTR390_GAIN_18] = 18,
+};
+
+static const float res_factor[] ={
+	[RESOLUTION_20BIT_TIME400MS] = 4.0,
+	[RESOLUTION_19BIT_TIME200MS] = 2.0,
+	[RESOLUTION_18BIT_TIME100MS] = 1.0,
+	[RESOLUTION_17BIT_TIME50MS] = 0.5,
+	[RESOLUTION_16BIT_TIME25MS] = 0.25,
+	[RESOLUTION_13BIT_TIME12_5MS] = 0.03125,
+};
+
+static inline void ltr390_get_uvi_from_raw(const struct device *dev)
+{
+	const struct ltr390_config *config = dev->config;
+	struct ltr390_data *data = dev->data;
+
+	data->uvi = (float)(data->raw_uvi_data) / 
+			((gain_factor[config->gain] / 
+			gain_factor[LTR390_GAIN_18]) * 
+			(res_factor[config->resolution] / 
+			res_factor[RESOLUTION_20BIT_TIME400MS]) * 
+			(float)(LTR390_UV_SENSITIVITY)) * (float)(WFAC);
+} 
+
+static inline void ltr390_get_lux_from_raw(const struct device *dev)
+{
+	const struct ltr390_config *config = dev->config;
+	struct ltr390_data *data = dev->data;
+
+	data->lux = 0.6 * (float)(data->raw_lux_data) / 
+			(gain_factor[config->gain] * 
+			res_factor[config->resolution]) * (float)(WFAC);
+} 
 
 static int ltr390_sample_fetch(const struct device *dev,
 				 enum sensor_channel chan)
 {
+	struct ltr390_data *data = dev->data;
+
+	switch (chan)
+	{
+		case SENSOR_CHAN_LIGHT:
+			ltr390_set_mode(dev, LTR390_MODE_ALS);
+			break;
+		case SENSOR_CHAN_LTR390_UVI:
+			ltr390_set_mode(dev, LTR390_MODE_UVS);
+			break;
+		default:
+			return -ENOTSUP;
+	}
+
+	ltr390_enable_meas(dev);
+
+
+	int64_t start_time = k_uptime_get();
+
+	int ret;
+
+	while (1)
+	{
+		if (k_uptime_get() - start_time > MAX_CONVERISON_TIME)
+		{
+			LOG_ERR("Waiting data ready timed out!");
+			return -ETIMEDOUT;
+		}
+
+		ret = ltr390_is_data_ready(dev);
+		if (ret == 0)
+		{
+			break;
+		}
+		if (ret < 0)
+		{
+			LOG_ERR("Error waiting data ready: %d", ret);
+			return ret;
+		}
+
+		k_msleep(5);
+	}
+
+	switch (chan)
+	{
+		case SENSOR_CHAN_LTR390_UVI:
+			ret = ltr390_get_raw_uvs_data(dev, &data->raw_uvi_data);
+			if (ret < 0)
+			{
+				LOG_ERR("Error getting raw UVS: %d", ret);
+				return ret;
+			}
+			ltr390_get_uvi_from_raw(dev);
+			break;
+		case SENSOR_CHAN_LIGHT:
+			ret = ltr390_get_raw_als_data(dev, &data->raw_lux_data);
+			if (ret < 0)
+			{
+				LOG_ERR("Error getting raw ALS: %d", ret);
+				return ret;
+			}
+			ltr390_get_lux_from_raw(dev);
+			break;
+		default:
+			return -ENOTSUP;
+	}
+
 	return 0;
 }
 
