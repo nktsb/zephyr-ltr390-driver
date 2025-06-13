@@ -1,0 +1,11 @@
+# Copyright (c) 2025 Subbotin N.Y. <neymarus@yandex.ru>
+# GitHub: https://github.com/nktsb
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig LTR390
+	bool "LTR390 optical sensor"
+	default y
+	depends on DT_HAS_LITEON_LTR390_ENABLED
+	select I2C
+	help
+	  Enable driver for LTR390 sensor.
