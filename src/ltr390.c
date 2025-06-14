@@ -228,27 +228,35 @@ static int ltr390_set_mode(const struct device *dev,
 	return 0;
 }
 
-static int32_t ltr390_get_raw_uvs_data(const struct device *dev, uint32_t *buff)
+static int32_t ltr390_get_raw_uvs_data(const struct device *dev, uint32_t *adc_val)
 {
 	int ret;
 
-	ret = ltr390_read_data(dev, LTR390_UVSDATA, (uint8_t *)buff, 3);
+	uint8_t buff[3] = {0};
+	ret = ltr390_read_data(dev, LTR390_UVSDATA, buff, sizeof(buff));
 	if (ret < 0)
 	{
 		return ret;
 	}
+
+	*adc_val = (uint32_t)buff[2] << 16 | buff[1] << 8 | buff[0];
+
 	return 0;
 }
 
-static int32_t ltr390_get_raw_als_data(const struct device *dev, uint32_t *buff)
+static int32_t ltr390_get_raw_als_data(const struct device *dev, uint32_t *adc_val)
 {
 	int ret;
 
-	ret = ltr390_read_data(dev, LTR390_ALSDATA, (uint8_t *)buff, 3);
+	uint8_t buff[3] = {0};
+	ret = ltr390_read_data(dev, LTR390_ALSDATA, buff, sizeof(buff));
 	if (ret < 0)
 	{
 		return ret;
 	}
+
+	*adc_val = (uint32_t)buff[2] << 16 | buff[1] << 8 | buff[0];
+
 	return 0;
 }
 
