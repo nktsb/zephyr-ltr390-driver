@@ -34,7 +34,6 @@ static int ltr390_read_byte(const struct device *dev, uint8_t reg, uint8_t *buff
 	const struct ltr390_config *config = dev->config;
 
 	int ret = i2c_write_read_dt(&config->i2c, &reg, sizeof(reg), buff, 1);
-
 	if (ret < 0) {
 		LOG_ERR("Read reg %x error: %d", reg, ret);
 		return ret;
