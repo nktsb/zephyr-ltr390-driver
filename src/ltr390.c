@@ -448,7 +448,7 @@ static const struct sensor_driver_api ltr390_driver_api = {
 		.mode = DT_INST_ENUM_IDX(inst, mode),						\
 	};											\
 												\
-	SENSOR_DEVICE_DT_INST_DEFINE(inst, ltr390_init, PM_DEVICE_DT_INST_GET(inst),		\
+	SENSOR_DEVICE_DT_INST_DEFINE(inst, ltr390_init, NULL,					\
 			      &ltr390_data_##inst, &ltr390_config_##inst, POST_KERNEL,		\
 			      CONFIG_SENSOR_INIT_PRIORITY, &ltr390_driver_api);			\
 
